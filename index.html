@@ -3,10 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Amiga-style Demo v1.3.2: Evenly Distributed Bobs with Stars</title>
+    <title>Sinus Demo by Jonas Lund</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: black; color: white; font-family: Arial, sans-serif; }
-        canvas { display: block; }
+        /* Created by Jonas Lund 2024 */
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: black; 
+            color: white; 
+            font-family: Arial, sans-serif; 
+        }
+        canvas { 
+            display: block; 
+        }
         #controls { 
             position: absolute; 
             top: 10px; 
@@ -17,103 +26,185 @@
         }
         .slider-container { 
             margin-bottom: 10px; 
+            font-size: 80%; /* Reduce font size by 20% */
+            opacity: 0.9; /* Increase transparency by 10% */
         }
         input[type="range"] { 
-            width: 200px; 
-            opacity: 0.5;
+            width: 160px; /* Reduce width by 20% */
+            opacity: 0.4; /* Increase transparency by 10% */
         }
         label {
-            opacity: 0.5;
+            opacity: 0.4; /* Increase transparency by 10% */
         }
     </style>
 </head>
 <body>
     <canvas id="canvas"></canvas>
     <div id="controls">
+        <!-- Slider for the number of bobs -->
         <div class="slider-container">
             <label for="bobCount">Number of Bobs: </label>
-            <input type="range" id="bobCount" min="1" max="200" value="75" step="1">
+            <input type="range" id="bobCount" min="1" max="200" value="25" step="1">
         </div>
+        <!-- Slider for the size of the bobs -->
+        <div class="slider-container">
+            <label for="bobSize">Bob Size: </label>
+            <input type="range" id="bobSize" min="5" max="35" value="30" step="1">
+        </div>
+        <!-- Slider for the speed of the bobs -->
         <div class="slider-container">
             <label for="speed">Speed: </label>
             <input type="range" id="speed" min="0" max="10" value="1" step="0.1">
         </div>
+        <!-- Slider for the x-axis amplitude -->
         <div class="slider-container">
             <label for="xAxis">X-Axis: </label>
             <input type="range" id="xAxis" min="0" max="100" value="1">
         </div>
+        <!-- Slider for the y-axis amplitude -->
         <div class="slider-container">
             <label for="yAxis">Y-Axis: </label>
             <input type="range" id="yAxis" min="0" max="100" value="100">
         </div>
+        <!-- Slider for the z-axis depth -->
         <div class="slider-container">
             <label for="zAxis">Z-Axis (Depth): </label>
             <input type="range" id="zAxis" min="5" max="200" value="200">
         </div>
+        <!-- Slider for the scroll speed -->
+        <div class="slider-container">
+            <label for="scrollSpeed">Scroll Speed: </label>
+            <input type="range" id="scrollSpeed" min="0.5" max="5" value="1.5" step="0.1">
+        </div>
+        <!-- Slider for the scroll amplitude -->
+        <div class="slider-container">
+            <label for="scrollAmplitude">Scroll Amplitude: </label>
+            <input type="range" id="scrollAmplitude" min="5" max="100" value="100" step="1">
+        </div>
+        <!-- Slider for the scroll bounce speed -->
+        <div class="slider-container">
+            <label for="bounceSpeed">Bounce Speed: </label>
+            <input type="range" id="bounceSpeed" min="0.01" max="0.15" value="0.09" step="0.01">
+        </div>
     </div>
     <script>
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-
+    document.addEventListener('DOMContentLoaded', (event) => {
+        let canvas, ctx, bobs = [], stars = [], time = 0, scrollTextOffset, textHue = 0, morphProgress = 0, holdProgress = 0;
+        let bobCountSlider, bobSizeSlider, speedSlider, xAxisSlider, yAxisSlider, zAxisSlider, scrollSpeedSlider, scrollAmplitudeSlider, bounceSpeedSlider;
         const numStars = 200;
-        let bobs = [];
-        const stars = [];
-        let time = 0;
-        let scrollTextOffset = canvas.width;
-        let textHue = 0;
+        const morphSpeed = 0.03;
+        const holdDuration = 20 * 60; // 15 seconds at 60 FPS
 
-        // Get slider elements
-        const bobCountSlider = document.getElementById('bobCount');
-        const speedSlider = document.getElementById('speed');
-        const xAxisSlider = document.getElementById('xAxis');
-        const yAxisSlider = document.getElementById('yAxis');
-        const zAxisSlider = document.getElementById('zAxis');
+        // Define different shapes for the bobs
+        const shapes = [
+            (size) => { // Triangle
+                return [
+                    [0, -size],
+                    [size * Math.cos(Math.PI / 6), size * Math.sin(Math.PI / 6)],
+                    [-size * Math.cos(Math.PI / 6), size * Math.sin(Math.PI / 6)]
+                ];
+            },
+            (size) => { // Square
+                return [
+                    [-size, -size],
+                    [size, -size],
+                    [size, size],
+                    [-size, size]
+                ];
+            },
+            (size) => { // Star
+                const points = [];
+                for (let i = 0; i < 5; i++) {
+                    const angle = (i * 4 * Math.PI) / 5;
+                    points.push([size * Math.cos(angle), size * Math.sin(angle)]);
+                    const innerAngle = angle + Math.PI / 5;
+                    points.push([size * 0.5 * Math.cos(innerAngle), size * 0.5 * Math.sin(innerAngle)]);
+                }
+                return points;
+            },
+            (size) => { // Pentagon
+                const points = [];
+                for (let i = 0; i < 5; i++) {
+                    const angle = (i * 2 * Math.PI) / 5;
+                    points.push([size * Math.cos(angle), size * Math.sin(angle)]);
+                }
+                return points;
+            },
+            (size) => { // Circle (approximated with many points)
+                const points = [];
+                const numPoints = 20;
+                for (let i = 0; i < numPoints; i++) {
+                    const angle = (i * 2 * Math.PI) / numPoints;
+                    points.push([size * Math.cos(angle), size * Math.sin(angle)]);
+                }
+                return points;
+            }
+        ];
 
+        // Class for Bob
         class Bob {
             constructor(index, totalBobs) {
                 this.index = index;
-                this.size = 15;
+                this.size = parseInt(bobSizeSlider.value);
                 this.updatePosition(totalBobs);
+                this.currentShapeIndex = 0;
+                this.nextShapeIndex = 1;
             }
 
+            // Update the position and color of the bob
             updatePosition(totalBobs) {
                 this.color = `hsl(${(this.index * 360 / totalBobs) % 360}, 100%, 50%)`;
-                this.phaseShift = (this.index / totalBobs) * Math.PI * 2; // Distribute evenly across 2π
+                this.phaseShift = (this.index / totalBobs) * Math.PI * 2;
             }
 
+            // Update the bob's position and size based on time and other parameters
             update(t, speed, xAmplitude, yAmplitude, zDepth, totalBobs) {
                 const frequency = 0.02 * speed;
-                
                 this.x = (this.index / totalBobs) * canvas.width;
                 this.y = canvas.height / 2 + Math.sin(t * frequency + this.phaseShift) * yAmplitude;
                 this.z = 500 + Math.sin(t * frequency * 0.5 + this.phaseShift) * zDepth;
-
-                // Add horizontal wave motion
                 this.x += Math.sin(t * frequency * 0.25 + this.phaseShift) * xAmplitude;
-
-                // Perspective calculation
                 const scale = 1000 / (1000 + this.z);
                 this.screenX = (this.x - canvas.width / 2) * scale + canvas.width / 2;
                 this.screenY = (this.y - canvas.height / 2) * scale + canvas.height / 2;
                 this.screenSize = this.size * scale;
             }
 
-            draw() {
+            // Draw the bob with morphing effect
+            draw(morphProgress) {
                 ctx.fillStyle = this.color;
+                const currentShape = shapes[this.currentShapeIndex](this.screenSize);
+                const nextShape = shapes[this.nextShapeIndex](this.screenSize);
                 ctx.beginPath();
-                ctx.arc(this.screenX, this.screenY, this.screenSize, 0, Math.PI * 2);
+                for (let i = 0; i < Math.max(currentShape.length, nextShape.length); i++) {
+                    const currentPoint = currentShape[i % currentShape.length];
+                    const nextPoint = nextShape[i % nextShape.length];
+                    const x = this.screenX + (currentPoint[0] * (1 - morphProgress) + nextPoint[0] * morphProgress);
+                    const y = this.screenY + (currentPoint[1] * (1 - morphProgress) + nextPoint[1] * morphProgress);
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.closePath();
                 ctx.fill();
+            }
+
+            // Set the next shape for morphing
+            setNextShape() {
+                this.currentShapeIndex = this.nextShapeIndex;
+                this.nextShapeIndex = (this.nextShapeIndex + 1) % shapes.length;
             }
         }
 
+        // Class for Star
         class Star {
             constructor() {
                 this.reset();
             }
 
+            // Reset the star's position and size
             reset() {
                 this.x = Math.random() * 2000 - 1000;
                 this.y = Math.random() * 2000 - 1000;
@@ -121,25 +212,24 @@
                 this.size = 1;
             }
 
+            // Update the star's position
             update() {
                 this.z -= 0.5;
                 if (this.z <= 0) {
                     this.reset();
                 }
-                
                 const scale = 200 / this.z;
                 const x2d = this.x * scale + canvas.width / 2;
                 const y2d = this.y * scale + canvas.height / 2;
-                
                 if (x2d < 0 || x2d > canvas.width || y2d < 0 || y2d > canvas.height) {
                     this.reset();
                 }
-
                 this.screenX = x2d;
                 this.screenY = y2d;
                 this.screenSize = Math.max(0.5, 2 * scale * this.size);
             }
 
+            // Draw the star
             draw() {
                 ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(1, 2000 / this.z / 10)})`;
                 ctx.beginPath();
@@ -148,37 +238,34 @@
             }
         }
 
+        // Function to draw the scrolling text with bouncing effect
         function drawScrollText(text, offset, time) {
-            textHue = (textHue + 0.5) % 360; // Slowly change color
-            ctx.font = 'bold 32px Arial';
-            ctx.fillStyle = `hsl(${textHue}, 100%, 50%)`; // Use HSL for easy color cycling
-            
-            const baseY = canvas.height - 50;
-            const amplitudeY = 30;
-            const frequencyY = 0.15;
-            const amplitudeX = 5;
-            const frequencyX = 0.1;
-
+            textHue = (textHue + 0.5) % 360;
+            ctx.font = 'bold 38px Arial';
+            ctx.fillStyle = `hsl(${textHue}, 100%, 30%)`;
+            const baseY = canvas.height - 30;
+            const amplitudeY = parseFloat(scrollAmplitudeSlider.value);
+            const bounceSpeed = parseFloat(bounceSpeedSlider.value);
+            const waveY = Math.abs(Math.sin(time * bounceSpeed) * amplitudeY);
+            let currentX = offset;
             for (let i = 0; i < text.length; i++) {
-                const charOffset = offset + i * 25;
-                if (charOffset > -50 && charOffset < canvas.width) {
-                    const waveY = Math.sin((time + i * 0.3) * frequencyY) * amplitudeY;
-                    const waveX = Math.sin((time + i * 0.2) * frequencyX) * amplitudeX;
-                    const x = charOffset + waveX;
-                    const y = baseY + waveY;
-                    
+                const char = text[i];
+                const charWidth = ctx.measureText(char).width;
+                if (currentX + charWidth > 0 && currentX < canvas.width) {
+                    const x = currentX;
+                    const y = baseY - waveY;
                     ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-                    ctx.shadowBlur = 5;
+                    ctx.shadowBlur = 300;
                     ctx.shadowOffsetX = 3;
-                    ctx.shadowOffsetY = 3;
-
-                    ctx.fillText(text[i], x, y);
-
+                    ctx.shadowOffsetY =300;
+                    ctx.fillText(char, x, y);
                     ctx.shadowColor = 'transparent';
                 }
+                currentX += charWidth;
             }
         }
 
+        // Update the number of bobs
         function updateBobCount() {
             const newCount = parseInt(bobCountSlider.value);
             if (newCount > bobs.length) {
@@ -188,28 +275,27 @@
             } else if (newCount < bobs.length) {
                 bobs = bobs.slice(0, newCount);
             }
-            // Update all bobs to ensure correct positioning and coloring
             bobs.forEach((bob, index) => {
                 bob.index = index;
                 bob.updatePosition(newCount);
             });
         }
 
-        bobCountSlider.addEventListener('input', updateBobCount);
-
-        // Initial bob creation
-        updateBobCount();
-
-        for (let i = 0; i < numStars; i++) {
-            stars.push(new Star());
+        // Update the size of the bobs
+        function updateBobSize() {
+            const newSize = parseInt(bobSizeSlider.value);
+            bobs.forEach(bob => {
+                bob.size = newSize;
+            });
         }
 
+        // Main animation loop
         function animate() {
             ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             time += 1;
-            scrollTextOffset -= 2;
+            scrollTextOffset -= parseFloat(scrollSpeedSlider.value);
 
             const speed = parseFloat(speedSlider.value);
             const xAmplitude = parseFloat(xAxisSlider.value) * 2;
@@ -223,26 +309,78 @@
 
             bobs.forEach(bob => {
                 bob.update(time, speed, xAmplitude, yAmplitude, zDepth, bobs.length);
-                bob.draw();
+                bob.draw(morphProgress);
             });
 
-            drawScrollText("WHAT ONCE WAS SUPER COMPLICATED USING ASSEMBLER ON A AMIGA 500 IS NOW SUPER EASY TO GENERATE USING CLAUDE 3.5 SONNET. AWESOME IF YOU ASK ME.           NOW WE JUST NEED TO CONVINCE THE ANTHROPIC GUYS TO EXTEND THE PROMPT AMOUNT FOR THE PAYED VERSION.          I WISH I HAD THIS TOOL BACK IN THE 80'S!      SHIT WOULD HAVE BEEN MUCH EASIER THEN. ENJOY!                                                                                                  ", scrollTextOffset, time);
-            if (scrollTextOffset < -10000) {
+            if (holdProgress < holdDuration) {
+                holdProgress++;
+            } else {
+                morphProgress += morphSpeed;
+                if (morphProgress >= 1) {
+                    morphProgress = 0;
+                    holdProgress = 0;
+                    bobs.forEach(bob => bob.setNextShape());
+                }
+            }
+
+            drawScrollText("WHAT ONCE WAS SUPER COMPLICATED USING ASSEMBLER ON A AMIGA 500,       IS NOW SUPER EASY TO GENERATE USING CLAUDE 3.5 SONNET.                    AWESOME IF YOU ASK ME.                 NOW WE JUST NEED TO CONVINCE THE ANTHROPIC GUYS TO EXTEND THE PROMPT AMOUNT FOR THE PAYED VERSION.                                                          I WISH I HAD THIS TOOL BACK IN THE 80'S!                                                         SHIT WOULD HAVE BEEN MUCH EASIER THEN.                                                                                 ENJOY! ", scrollTextOffset, time);
+            if (scrollTextOffset < -9000) {
                 scrollTextOffset = canvas.width;
             }
 
             requestAnimationFrame(animate);
         }
 
-        animate();
+        // Initialize the canvas and sliders
+        function init() {
+            canvas = document.getElementById('canvas');
+            if (!canvas) {
+                console.error('Canvas element not found');
+                return;
+            }
+            ctx = canvas.getContext('2d');
 
-        window.addEventListener('resize', () => {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            stars.forEach(star => star.reset());
-            updateBobCount(); // This will redistribute the bobs evenly
+
+            bobCountSlider = document.getElementById('bobCount');
+            bobSizeSlider = document.getElementById('bobSize');
+            speedSlider = document.getElementById('speed');
+            xAxisSlider = document.getElementById('xAxis');
+            yAxisSlider = document.getElementById('yAxis');
+            zAxisSlider = document.getElementById('zAxis');
+            scrollSpeedSlider = document.getElementById('scrollSpeed');
+            scrollAmplitudeSlider = document.getElementById('scrollAmplitude');
+            bounceSpeedSlider = document.getElementById('bounceSpeed');
+
+            if (!bobCountSlider || !bobSizeSlider || !speedSlider || !xAxisSlider || !yAxisSlider || !zAxisSlider || !scrollSpeedSlider || !scrollAmplitudeSlider || !bounceSpeedSlider) {
+                console.error('One or more slider elements not found');
+                return;
+            }
+
             scrollTextOffset = canvas.width;
-        });
+
+            updateBobCount();
+            for (let i = 0; i < numStars; i++) {
+                stars.push(new Star());
+            }
+
+            bobCountSlider.addEventListener('input', updateBobCount);
+            bobSizeSlider.addEventListener('input', updateBobSize);
+
+            window.addEventListener('resize', () => {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                stars.forEach(star => star.reset());
+                updateBobCount();
+                scrollTextOffset = canvas.width;
+            });
+
+            animate();
+        }
+
+        init();
+    });
     </script>
 </body>
 </html>
